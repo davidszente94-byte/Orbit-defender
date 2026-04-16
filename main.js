@@ -441,12 +441,10 @@ class Game {
   }
 
   resizeCanvas() {
-    const ratio = window.devicePixelRatio || 1;
-    this.canvas.width = Math.floor(window.innerWidth * ratio);
-    this.canvas.height = Math.floor(window.innerHeight * ratio);
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
     this.canvas.style.width = `${window.innerWidth}px`;
     this.canvas.style.height = `${window.innerHeight}px`;
-    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     this.rescaleScene();
   }
 
