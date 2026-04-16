@@ -463,7 +463,7 @@ class Game {
 
     const center = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
     const shortSide = Math.min(this.canvas.width, this.canvas.height);
-    const orbitalRadius = shortSide * 0.22;
+    const orbitalRadius = shortSide * 0.17;
     const coreRadius = Math.max(24, shortSide * 0.08);
     const playerSize = Math.max(10, shortSide * 0.03);
 
