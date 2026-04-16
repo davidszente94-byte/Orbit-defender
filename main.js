@@ -214,8 +214,9 @@ class Game {
   setupScene() {
     const center = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
     const shortSide = Math.min(this.canvas.width, this.canvas.height);
-    const orbitalRadius = shortSide * 0.18;
-    const coreRadius = shortSide * 0.07;
+    const orbitalRadius = shortSide * 0.35;
+    const coreRadius = Math.max(24, shortSide * 0.08);
+    const playerSize = Math.max(10, shortSide * 0.03);
 
     this.core = { ...center, radius: coreRadius };
     this.entityManager.players = [];
@@ -225,7 +226,7 @@ class Game {
     this.ui.updateText();
     this.spawnTimer = 0;
 
-    const player = new Player(center, orbitalRadius, { size: Math.max(8, shortSide * 0.015) });
+    const player = new Player(center, orbitalRadius, { size: playerSize });
     this.entityManager.addPlayer(player);
   }
 
@@ -244,17 +245,36 @@ class Game {
       }
     });
 
-    document.addEventListener('pointerdown', event => {
-      if (event.isPrimary) {
+    document.addEventListener('mousedown', event => {
+      if (event.button === 0) {
+        event.preventDefault();
         this.onInputDown();
       }
     });
 
-    document.addEventListener('pointerup', event => {
-      if (event.isPrimary) {
+    document.addEventListener('mouseup', event => {
+      if (event.button === 0) {
+        event.preventDefault();
         this.onInputUp(performance.now() / 1000);
       }
     });
+
+    document.addEventListener('touchstart', event => {
+      if (event.touches.length > 0) {
+        event.preventDefault();
+        this.onInputDown();
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', event => {
+      event.preventDefault();
+      this.onInputUp(performance.now() / 1000);
+    }, { passive: false });
+
+    document.addEventListener('touchcancel', event => {
+      event.preventDefault();
+      this.onInputUp(performance.now() / 1000);
+    }, { passive: false });
 
     this.startButton.addEventListener('click', () => this.start());
   }
@@ -312,7 +332,7 @@ class Game {
     const projectile = new Projectile(x, y, velocity, {
       health: 1,
       bounceCount: 0,
-      radius: Math.max(8, Math.min(this.canvas.width, this.canvas.height) * 0.012),
+      radius: Math.max(8, Math.min(this.canvas.width, this.canvas.height) * 0.018),
       color: '#ff8142'
     });
 
@@ -427,6 +447,26 @@ class Game {
     this.canvas.style.width = `${window.innerWidth}px`;
     this.canvas.style.height = `${window.innerHeight}px`;
     this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    this.rescaleScene();
+  }
+
+  rescaleScene() {
+    if (!this.core) {
+      return;
+    }
+
+    const center = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
+    const shortSide = Math.min(this.canvas.width, this.canvas.height);
+    const orbitalRadius = shortSide * 0.35;
+    const coreRadius = Math.max(24, shortSide * 0.08);
+    const playerSize = Math.max(10, shortSide * 0.03);
+
+    this.core = { ...center, radius: coreRadius };
+    this.entityManager.players.forEach(player => {
+      player.center = center;
+      player.orbitalRadius = orbitalRadius;
+      player.size = playerSize;
+    });
   }
 
   registerServiceWorker() {
