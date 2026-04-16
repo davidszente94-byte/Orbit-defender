@@ -214,8 +214,7 @@ class Game {
   setupScene() {
     const center = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
     const shortSide = Math.min(this.canvas.width, this.canvas.height);
-    const margin = 40;
-    const orbitalRadius = Math.max(80, shortSide / 2 - margin);
+    const orbitalRadius = shortSide * 0.22;
     const coreRadius = Math.max(24, shortSide * 0.08);
     const playerSize = Math.max(10, shortSide * 0.03);
 
@@ -418,6 +417,14 @@ class Game {
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(this.core.x, this.core.y, this.entityManager.players[0]?.orbitalRadius ?? 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(this.core.x, this.core.y, this.core.radius, 0, Math.PI * 2);
@@ -456,8 +463,7 @@ class Game {
 
     const center = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
     const shortSide = Math.min(this.canvas.width, this.canvas.height);
-    const margin = 40;
-    const orbitalRadius = Math.max(80, shortSide / 2 - margin);
+    const orbitalRadius = shortSide * 0.22;
     const coreRadius = Math.max(24, shortSide * 0.08);
     const playerSize = Math.max(10, shortSide * 0.03);
 
