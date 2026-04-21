@@ -106,3 +106,17 @@ button {
 button:hover {
   transform: translateY(-1px);
 }
+
+.menu-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.shop-item {
+  background: rgba(255,255,255,0.05);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 10px;
+}
