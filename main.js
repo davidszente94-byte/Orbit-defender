@@ -209,7 +209,7 @@ class Game {
     this.entityManager = new EntityManager();
     this.lastTimestamp = 0;
     this.spawnTimer = 0;
-    this.spawnInterval = 1.05;
+    this.spawnInterval = 2.1;
     this.core = { x: 0, y: 0, radius: 0 };
     this.inputDown = false;
     this.inputThreshold = 0.2;
@@ -527,7 +527,7 @@ class Game {
       this.baseSpeed = ((Math.max(this.canvas.width, this.canvas.height) * 0.8) / targetTime) * 0.5;
       this.maxSpawnArc = Math.min(Math.PI * 1.2, (100 + elapsed * 0.5) * Math.PI / 180);
       if (elapsed < 15) this.maxSpawnArc = 120 * Math.PI / 180;
-      this.spawnInterval = Math.max(0.45, 1.1 - elapsed * 0.012);
+      this.spawnInterval = Math.max(0.9, 2.2 - elapsed * 0.012);
 
       this.spawnTimer += deltaTime;
       if (this.spawnTimer >= this.spawnInterval) {
