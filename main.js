@@ -2,10 +2,12 @@ class GameStateManager {
   constructor() {
     this.states = {
       START: 'START',
+      MENU: 'MENU',
+      SHOP: 'SHOP',
       PLAYING: 'PLAYING',
       GAMEOVER: 'GAMEOVER'
     };
-    this.current = this.states.START;
+    this.current = this.states.MENU;
   }
 
   set(state) {
@@ -23,7 +25,8 @@ class Projectile {
     this.health = options.health ?? 1;
     this.bounceCount = options.bounceCount ?? 0;
     this.radius = options.radius ?? 10;
-    this.color = options.color ?? '#ff5f1a';
+    this.speed = Math.hypot(velocity.x, velocity.y);
+    this.color = '#ff5f1a';
     this.isDestroyed = false;
   }
 
@@ -48,6 +51,12 @@ class Projectile {
   destroy() {
     this.isDestroyed = true;
   }
+
+  timeToImpact(core) {
+    const direction = { x: core.x - this.x, y: core.y - this.y };
+    const dist = Math.hypot(direction.x, direction.y);
+    return dist / this.speed;
+  }
 }
 
 class Player {
@@ -60,7 +69,7 @@ class Player {
     this.angularSpeed = this.baseAngularSpeed;
     this.boostMultiplier = options.boostMultiplier ?? 2.0;
     this.size = options.size ?? 12;
-    this.color = options.color ?? '#47ff6d';
+    this.color = '#47ff6d';
     this.trailDuration = options.trailDuration ?? 1.0;
     this.trail = [];
     this.isBoosting = false;
@@ -160,17 +169,25 @@ class UIController {
   constructor(statusElement) {
     this.statusElement = statusElement;
     this.gold = 0;
+    this.totalGold = parseInt(localStorage.getItem('orbit_defender_totalGold')) || 0;
     this.health = 5;
     this.updateText();
   }
 
   updateText() {
-    this.statusElement.textContent = `Gold: ${this.gold} | Health: ${this.health}`;
+    const shieldStatus = window.gameInstance?.getShieldStatus?.() || "";
+    this.statusElement.textContent = `Gold: ${this.gold} (Total: ${this.totalGold}) | Health: ${this.health} ${shieldStatus}`;
   }
 
   addGold(amount = 1) {
     this.gold += amount;
     this.updateText();
+  }
+
+  finalizeGold() {
+    this.totalGold += this.gold;
+    localStorage.setItem('orbit_defender_totalGold', this.totalGold);
+    this.gold = 0;
   }
 
   takeDamage(amount = 1) {
@@ -181,6 +198,7 @@ class UIController {
 
 class Game {
   constructor() {
+    window.gameInstance = this;
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
     this.overlay = document.getElementById('overlay');
@@ -194,17 +212,45 @@ class Game {
     this.spawnInterval = 1.05;
     this.core = { x: 0, y: 0, radius: 0 };
     this.inputDown = false;
+    this.inputThreshold = 0.2;
+    this.gameStartTime = 0;
     this.inputStartTime = 0;
     this.inputBoostActive = false;
-    this.inputThreshold = 0.2;
+    this.coreLastHitTime = -1000;
+    this.CORE_DAMAGE_COOLDOWN = 1000;
+
+    // Shield System
+    this.shieldUnlocked = localStorage.getItem('orbit_defender_shieldUnlocked') === 'true';
+    this.shieldActive = false;
+    this.lastShieldUseTime = -20000;
+    this.shieldDuration = 3000;
+    this.shieldCooldown = 20000;
+
+    this.maxSpawnArc = 100 * Math.PI / 180; // 100 degrees in radians
+    this.baseAngle = Math.random() * 2 * Math.PI; // Random angle between 0 and 360 degrees
+    this.spawnBatchSize = 3;
+    this.minSpawnDelay = 80;
+    this.maxSpawnDelay = 250;
+    this.numSectors = 8;
+    this.maxActiveSectors = 2;
+    this.activeSectors = new Array(this.numSectors).fill(0);
+    this.baseSpeed = 30;
+    this.speedVariation = 0;
+
+    this.getSector = (angle) => {
+      const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      return Math.floor((normalized / (Math.PI * 2)) * this.numSectors);
+    };
 
     this.registerEvents();
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
     this.registerServiceWorker();
+    this.showMenu();
   }
 
   start() {
+    this.gameStartTime = performance.now();
     this.setupScene();
     this.state.set(this.state.states.PLAYING);
     this.overlay.classList.add('hide');
@@ -224,6 +270,9 @@ class Game {
     this.ui.gold = 0;
     this.ui.health = 5;
     this.ui.updateText();
+    this.activeSectors.fill(0);
+    this.coreLastHitTime = -1000;
+    this.shieldActive = false;
     this.spawnTimer = 0;
 
     const player = new Player(center, orbitalRadius, { size: playerSize });
@@ -235,6 +284,10 @@ class Game {
       if (event.code === 'Space') {
         event.preventDefault();
         this.onInputDown();
+      }
+      if (event.code === 'KeyS') {
+        event.preventDefault();
+        this.activateShield();
       }
     });
 
@@ -284,7 +337,11 @@ class Game {
   }
 
   onInputDown() {
-    if (this.state.current === this.state.states.START) {
+    if (this.state.current === this.state.states.MENU) {
+      this.start();
+      return;
+    }
+    if (this.state.current === this.state.states.GAMEOVER) {
       this.start();
       return;
     }
@@ -322,16 +379,47 @@ class Game {
     }
   }
 
-  spawnProjectile() {
-    const edge = Math.floor(Math.random() * 4);
-    const padding = 32;
-    const x = edge === 0 ? -padding : edge === 1 ? this.canvas.width + padding : Math.random() * this.canvas.width;
-    const y = edge === 2 ? -padding : edge === 3 ? this.canvas.height + padding : Math.random() * this.canvas.height;
+  activateShield() {
+    if (!this.shieldUnlocked || this.shieldActive || this.state.current !== this.state.states.PLAYING) return;
+    
+    const now = performance.now();
+    if (now - this.lastShieldUseTime >= this.shieldCooldown) {
+      this.shieldActive = true;
+      this.lastShieldUseTime = now;
+      this.ui.updateText();
+    }
+  }
+
+  getShieldStatus() {
+    if (!this.shieldUnlocked) return "";
+    const now = performance.now();
+    const cdRemaining = Math.ceil((this.shieldCooldown - (now - this.lastShieldUseTime)) / 1000);
+    if (this.shieldActive) return " | [SHIELD ACTIVE]";
+    if (cdRemaining <= 0) return " | [SHIELD READY (S)]";
+    return ` | [SHIELD: ${cdRemaining}s]`;
+  }
+
+  spawnProjectile(batchAngle, delay = 0) {
+    const angle = batchAngle + (Math.random() - 0.5) * this.maxSpawnArc;
+    const sector = this.getSector(angle);
+
+    let activeSectorCount = 0;
+    for (let i = 0; i < this.numSectors; i++) {
+      if (this.activeSectors[i] > 0) activeSectorCount++;
+    }
+
+    if (this.activeSectors[sector] === 0 && activeSectorCount >= this.maxActiveSectors) {
+      return; // Skip this spawn to respect max concurrent threat vectors
+    }
+
+    const distance = Math.max(this.canvas.width, this.canvas.height) * 0.8;
+    const x = this.core.x + Math.cos(angle) * distance;
+    const y = this.core.y + Math.sin(angle) * distance;
     const target = { x: this.core.x, y: this.core.y };
     const direction = { x: target.x - x, y: target.y - y };
-    const distance = Math.hypot(direction.x, direction.y);
-    const speed = (90 + Math.random() * 70) * 0.5;
-    const velocity = { x: (direction.x / distance) * speed, y: (direction.y / distance) * speed };
+    const dist = Math.hypot(direction.x, direction.y);
+    let speed = this.baseSpeed;
+    const velocity = { x: (direction.x / dist) * speed, y: (direction.y / dist) * speed };
 
     const projectile = new Projectile(x, y, velocity, {
       health: 1,
@@ -340,10 +428,33 @@ class Game {
       color: '#ff8142'
     });
 
-    this.entityManager.addProjectile(projectile);
+    const timeToImpact = projectile.timeToImpact(this.core);
+    const oppositeSector = (sector + this.numSectors / 2) % this.numSectors;
+
+    // Fairness validation: Avoid simultaneous opposite-direction threats
+    for (let i = 0; i < this.entityManager.projectiles.length; i++) {
+      const otherProjectile = this.entityManager.projectiles[i];
+      if (!otherProjectile || otherProjectile.isDestroyed) continue;
+
+      const otherSector = this.getSector(Math.atan2(otherProjectile.y - this.core.y, otherProjectile.x - this.core.x));
+      if (otherSector === oppositeSector) {
+        const timeDifference = Math.abs(timeToImpact - otherProjectile.timeToImpact(this.core));
+        if (timeDifference < 0.5) {
+          return;
+        }
+      }
+    }
+
+    this.activeSectors[sector]++;
+    setTimeout(() => {
+      if (this.state.current !== this.state.states.PLAYING) return;
+      this.entityManager.addProjectile(projectile);
+      // Attach sector to projectile so we can decrement correctly on destruction
+      projectile.sector = sector;
+    }, delay);
   }
 
-  processCollisions() {
+  processCollisions(timestamp) {
     const coreCenter = { x: this.core.x, y: this.core.y };
 
     this.entityManager.projectiles.forEach(projectile => {
@@ -352,9 +463,23 @@ class Game {
       }
 
       if (projectile.distanceTo(coreCenter) <= this.core.radius + projectile.radius) {
+        if (projectile.sector !== undefined) this.activeSectors[projectile.sector]--;
         projectile.destroy();
-        this.ui.takeDamage(1);
+        if (timestamp - this.coreLastHitTime >= this.CORE_DAMAGE_COOLDOWN) {
+          this.ui.takeDamage(1);
+          this.coreLastHitTime = timestamp;
+        }
         return;
+      }
+
+      // Shield Collision
+      if (this.shieldActive) {
+        const shieldRadius = (this.entityManager.players[0]?.orbitalRadius ?? 0) + 10;
+        if (projectile.distanceTo(coreCenter) <= shieldRadius) {
+          if (projectile.sector !== undefined) this.activeSectors[projectile.sector]--;
+          projectile.destroy();
+          return;
+        }
       }
 
       for (const player of this.entityManager.players) {
@@ -363,6 +488,7 @@ class Game {
         const dist = Math.hypot(projectile.x - playerPos.x, projectile.y - playerPos.y);
 
         if (dist <= player.size + projectile.radius) {
+          if (projectile.sector !== undefined) this.activeSectors[projectile.sector]--;
           projectile.destroy();
           this.ui.addGold(1);
           continue;
@@ -372,6 +498,7 @@ class Game {
           if (projectile.isDestroyed) break;
           const trailDist = Math.hypot(projectile.x - trailPoint.x, projectile.y - trailPoint.y);
           if (trailDist <= player.size + projectile.radius) {
+            if (projectile.sector !== undefined) this.activeSectors[projectile.sector]--;
             projectile.destroy();
             this.ui.addGold(1);
             break;
@@ -387,10 +514,29 @@ class Game {
 
     if (this.state.current === this.state.states.PLAYING) {
       const currentTime = timestamp / 1000;
+      const elapsed = (timestamp - this.gameStartTime) / 1000;
+
+      // Shield Timer
+      if (this.shieldActive && timestamp - this.lastShieldUseTime >= this.shieldDuration) {
+        this.shieldActive = false;
+        this.ui.updateText();
+      }
+
+      // Difficulty Scaling
+      const targetTime = Math.max(4, 5 - elapsed * 0.02);
+      this.baseSpeed = ((Math.max(this.canvas.width, this.canvas.height) * 0.8) / targetTime) * 0.5;
+      this.maxSpawnArc = Math.min(Math.PI * 1.2, (100 + elapsed * 0.5) * Math.PI / 180);
+      if (elapsed < 15) this.maxSpawnArc = 120 * Math.PI / 180;
+      this.spawnInterval = Math.max(0.45, 1.1 - elapsed * 0.012);
+
       this.spawnTimer += deltaTime;
       if (this.spawnTimer >= this.spawnInterval) {
         this.spawnTimer = 0;
-        this.spawnProjectile();
+        const batchAngle = Math.random() * Math.PI * 2;
+        for (let i = 0; i < this.spawnBatchSize; i++) {
+          const delay = this.minSpawnDelay + Math.random() * (this.maxSpawnDelay - this.minSpawnDelay);
+          this.spawnProjectile(batchAngle, delay);
+        }
       }
 
       if (this.inputDown && !this.inputBoostActive && currentTime - this.inputStartTime >= this.inputThreshold) {
@@ -399,8 +545,9 @@ class Game {
       }
 
       this.entityManager.update(deltaTime, currentTime);
-      this.processCollisions();
+      this.processCollisions(timestamp);
       if (this.ui.health <= 0) {
+        this.ui.finalizeGold();
         this.state.set(this.state.states.GAMEOVER);
       }
     }
@@ -428,28 +575,87 @@ class Game {
     ctx.stroke();
     ctx.restore();
 
+    if (this.shieldActive) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(71, 255, 230, 0.4)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(this.core.x, this.core.y, (this.entityManager.players[0]?.orbitalRadius ?? 0) + 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.save();
-    ctx.fillStyle = '#ffffff';
+    const isInvulnerable = (this.lastTimestamp - this.coreLastHitTime) < this.CORE_DAMAGE_COOLDOWN;
+    ctx.fillStyle = isInvulnerable ? '#ff4747' : '#ffffff';
     ctx.beginPath();
     ctx.arc(this.core.x, this.core.y, this.core.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     this.entityManager.draw(ctx);
+  }
 
-    if (this.state.current === this.state.states.START) {
-      ctx.save();
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-      ctx.restore();
+  showMenu() {
+    this.state.set(this.state.states.MENU);
+    this.overlay.innerHTML = `
+      <h1>Orbit Defender</h1>
+      <p>Protect the core at all costs.</p>
+      <div class="menu-buttons">
+        <button id="playBtn">Play Game</button>
+        <button id="shopBtn">Shop</button>
+      </div>
+    `;
+    this.overlay.classList.remove('hide');
+    document.getElementById('playBtn').onclick = () => this.start();
+    document.getElementById('shopBtn').onclick = () => this.showShop();
+  }
+
+  showShop() {
+    this.state.set(this.state.states.SHOP);
+    const shieldBtn = this.shieldUnlocked 
+      ? `<button disabled>Unlocked</button>` 
+      : `<button id="buyShield">Buy Shield (50 Gold)</button>`;
+
+    this.overlay.innerHTML = `
+      <h1>Upgrades</h1>
+      <p>Total Gold: ${this.ui.totalGold}</p>
+      <div class="shop-item">
+        <h3>Shield Ability</h3>
+        <p class="small">Full-circle shield for 3s. Blocks all asteroids. (Key: S)</p>
+        ${shieldBtn}
+      </div>
+      <button id="backMenu" style="margin-top: 20px; background: #444;">Back to Menu</button>
+    `;
+    
+    const buyBtn = document.getElementById('buyShield');
+    if (buyBtn) {
+      buyBtn.onclick = () => {
+        if (this.ui.totalGold >= 50) {
+          this.ui.totalGold -= 50;
+          this.shieldUnlocked = true;
+          localStorage.setItem('orbit_defender_totalGold', this.ui.totalGold);
+          localStorage.setItem('orbit_defender_shieldUnlocked', 'true');
+          this.ui.updateText();
+          this.showShop();
+        }
+      };
     }
+    document.getElementById('backMenu').onclick = () => this.showMenu();
   }
 
   showGameOver() {
-    this.overlay.querySelector('h1').textContent = 'Game Over';
-    this.overlay.querySelector('p').textContent = 'Your core was breached. Refresh to try again.';
-    this.startButton.textContent = 'Play Again';
+    this.overlay.innerHTML = `
+      <h1>Game Over</h1>
+      <p>Your core was breached.</p>
+      <div class="menu-buttons">
+        <button id="retryBtn">Play Again</button>
+        <button id="menuBtn">Main Menu</button>
+      </div>
+    `;
     this.overlay.classList.remove('hide');
+    document.getElementById('retryBtn').onclick = () => this.start();
+    document.getElementById('menuBtn').onclick = () => this.showMenu();
   }
 
   resizeCanvas() {
