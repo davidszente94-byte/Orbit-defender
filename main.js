@@ -5,7 +5,8 @@ class GameStateManager {
       MENU: 'MENU',
       SHOP: 'SHOP',
       PLAYING: 'PLAYING',
-      GAMEOVER: 'GAMEOVER'
+      GAMEOVER: 'GAMEOVER',
+      LEVEL_UP: 'LEVEL_UP'
     };
     this.current = this.states.MENU;
   }
@@ -226,6 +227,12 @@ class Game {
     this.lastShieldUseTime = -20000;
     this.shieldDuration = 3000;
     this.shieldCooldown = 20000;
+    this.abilitiesUnlocked = {
+      trail: localStorage.getItem('ability_trail') === 'true',
+      pulse: localStorage.getItem('ability_pulse') === 'true',
+      shield: localStorage.getItem('ability_shield') === 'true'
+    };
+
 
     this.maxSpawnArc = 100 * Math.PI / 180; // 100 degrees in radians
     this.baseAngle = Math.random() * 2 * Math.PI; // Random angle between 0 and 360 degrees
@@ -239,6 +246,11 @@ class Game {
     this.speedVariation = 0;
     this.playerLevel = 1;
     this.playerXP = 0;
+    this.abilityLevels = {
+      trail: 0,
+      pulse: 0,
+      shield: 0
+    };
 
     this.getSector = (angle) => {
       const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -285,8 +297,12 @@ class Game {
     this.spawnTimer = 0;
     this.playerLevel = 1;
     this.playerXP = 0;
+    this.abilityLevels = { trail: 0, pulse: 0, shield: 0 };
 
-    const player = new Player(center, orbitalRadius, { size: playerSize });
+    const player = new Player(center, orbitalRadius, { 
+      size: playerSize,
+      trailDuration: this.abilitiesUnlocked.trail ? 0.3 : 0
+    });
     this.entityManager.addPlayer(player);
   }
 
@@ -404,6 +420,65 @@ class Game {
     return this.playerLevel * 5;
   }
 
+  checkLevelUp() {
+    if (this.state.current !== this.state.states.PLAYING) return;
+    if (this.playerXP >= this.getXPRequired()) {
+      this.playerXP -= this.getXPRequired();
+      this.playerLevel += 1;
+      this.ui.updateText();
+      this.state.set(this.state.states.LEVEL_UP);
+      this.showLevelUpMenu();
+    }
+  }
+
+  showLevelUpMenu() {
+    this.overlay.classList.remove('hide');
+    const available = Object.entries(this.abilitiesUnlocked)
+      .filter(([key, unlocked]) => unlocked && this.abilityLevels[key] < 5)
+      .map(([key]) => key);
+
+    this.overlay.innerHTML = `<h1>Level Up!</h1><p>${available.length > 0 ? 'Choose an upgrade:' : 'Maxed out! Bonus reward:'}</p><div class="menu-buttons"></div>`;
+    const container = this.overlay.querySelector('.menu-buttons');
+
+    if (available.length > 0) {
+      available.forEach(key => {
+        const btn = document.createElement('button');
+        const name = key === 'trail' ? 'Destroying Trail' : key === 'pulse' ? 'Pulsefire' : 'Shield';
+        btn.textContent = `${name} (Lv.${this.abilityLevels[key] + 1})`;
+        btn.onclick = () => {
+          this.abilityLevels[key]++;
+          if (key === 'trail') {
+            const duration = 0.3 + this.abilityLevels.trail * 0.3;
+            this.entityManager.players.forEach(p => p.trailDuration = duration);
+          }
+          this.resumeGame();
+        };
+        container.appendChild(btn);
+      });
+    } else {
+      const isGold = Math.random() < 0.9;
+      const btn = document.createElement('button');
+      btn.textContent = isGold ? "+10 Gold" : "+1 Health";
+      btn.onclick = () => {
+        if (isGold) {
+          this.ui.addGold(10);
+        } else {
+          this.ui.health++;
+          this.ui.updateText();
+        }
+        this.resumeGame();
+      };
+      container.appendChild(btn);
+    }
+  }
+
+  resumeGame() {
+    this.state.set(this.state.states.PLAYING);
+    this.overlay.classList.add('hide');
+    // Check if another level was banked during the pause
+    this.checkLevelUp();
+  }
+
   spawnProjectile(batchAngle, delay = 0) {
     const angle = batchAngle + (Math.random() - 0.5) * this.maxSpawnArc;
     const sector = this.getSector(angle);
@@ -497,10 +572,7 @@ class Game {
           projectile.destroy();
           this.ui.addGold(1);
           this.playerXP += 1;
-          while (this.playerXP >= this.getXPRequired()) {
-            this.playerXP -= this.getXPRequired();
-            this.playerLevel += 1;
-          }
+          this.checkLevelUp();
           continue;
         }
 
@@ -512,10 +584,7 @@ class Game {
             projectile.destroy();
             this.ui.addGold(1);
             this.playerXP += 1;
-            while (this.playerXP >= this.getXPRequired()) {
-              this.playerXP -= this.getXPRequired();
-              this.playerLevel += 1;
-            }
+            this.checkLevelUp();
             break;
           }
         }
@@ -640,31 +709,69 @@ class Game {
 
   showShop() {
     this.state.set(this.state.states.SHOP);
-    const shieldBtn = this.shieldUnlocked 
-      ? `<button disabled style="background: #444;">Unlocked</button>` 
-      : `<button id="buyShield">Buy Shield (50 Gold)</button>`;
+
+    const getAbilityButton = (abilityName, cost, key) => {
+      const isUnlocked = this.abilitiesUnlocked[key];
+      if (isUnlocked) {
+        return `<button disabled style="background: #444;">Unlocked</button>`;
+      } else {
+        return `<button id="buy${key.charAt(0).toUpperCase() + key.slice(1)}">Buy ${abilityName} (${cost} Gold)</button>`;
+      }
+    };
 
     this.overlay.innerHTML = `
       <h1>Upgrades</h1>
       <p>Total Gold: ${this.ui.totalGold}</p>
       <div class="shop-item">
-        <h3>Shield</h3>
-        <p class="small">One-time purchase.</p>
-        ${shieldBtn}
+        <h3>Destroying Trail</h3>
+        <p class="small">Your trail destroys asteroids.</p>
+        ${getAbilityButton('Destroying Trail', 50, 'trail')}
+      </div>
+      <div class="shop-item">
+        <h3>Pulsefire</h3>
+        <p class="small">A powerful pulse that clears nearby asteroids.</p>
+        ${getAbilityButton('Pulsefire', 50, 'pulse')}
+      </div>
+      <div class="shop-item">
+        <h3>Shield Ability</h3>
+        <p class="small">Full-circle shield for 3 seconds. Blocks all asteroids.</p>
+        ${getAbilityButton('Shield', 50, 'shield')}
       </div>
       <div class="menu-buttons">
         <button id="backMenu">Back to Menu</button>
       </div>
     `;
 
-    const buyBtn = document.getElementById('buyShield');
-    if (buyBtn) {
-      buyBtn.onclick = () => {
+    const buyAbility = (abilityKey, cost) => {
+      if (this.ui.totalGold >= cost) {
+        this.ui.totalGold -= cost;
+        this.abilitiesUnlocked[abilityKey] = true;
+        localStorage.setItem('orbit_defender_totalGold', this.ui.totalGold);
+        localStorage.setItem(`ability_${abilityKey}`, 'true');
+        this.ui.updateText();
+        this.showShop();
+      }
+    };
+
+    const buyTrailBtn = document.getElementById('buyTrail');
+    if (buyTrailBtn) {
+      buyTrailBtn.onclick = () => buyAbility('trail', 50);
+    }
+
+    const buyPulseBtn = document.getElementById('buyPulse');
+    if (buyPulseBtn) {
+      buyPulseBtn.onclick = () => buyAbility('pulse', 50);
+    }
+
+    const buyShieldBtn = document.getElementById('buyShield');
+    if (buyShieldBtn) {
+      buyShieldBtn.onclick = () => {
         if (this.ui.totalGold >= 50) {
           this.ui.totalGold -= 50;
-          this.shieldUnlocked = true;
+          this.abilitiesUnlocked.shield = true; // Update the new structure
+          this.shieldUnlocked = true; // Keep old flag for now as it's used in gameplay
           localStorage.setItem('orbit_defender_totalGold', this.ui.totalGold);
-          localStorage.setItem('orbit_defender_shieldUnlocked', 'true');
+          localStorage.setItem('ability_shield', 'true'); // Use new key
           this.ui.updateText();
           this.showShop();
         }
