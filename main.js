@@ -242,6 +242,12 @@ class Game {
       return Math.floor((normalized / (Math.PI * 2)) * this.numSectors);
     };
 
+    // Create Shield Button UI
+    this.shieldButton = document.createElement('div');
+    this.shieldButton.id = 'shieldButton';
+    this.shieldButton.innerHTML = '<div class="shield-icon">🛡️</div>';
+    document.body.appendChild(this.shieldButton);
+
     this.registerEvents();
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
@@ -285,10 +291,6 @@ class Game {
         event.preventDefault();
         this.onInputDown();
       }
-      if (event.code === 'KeyS') {
-        event.preventDefault();
-        this.activateShield();
-      }
     });
 
     document.addEventListener('keyup', event => {
@@ -329,6 +331,15 @@ class Game {
       this.onInputUp(performance.now() / 1000);
     }, { passive: false });
 
+    this.shieldButton.addEventListener('mousedown', e => {
+      e.stopPropagation();
+      this.activateShield();
+    });
+    this.shieldButton.addEventListener('touchstart', e => {
+      e.stopPropagation();
+      this.activateShield();
+    }, { passive: false });
+
     this.startButton.addEventListener('click', () => this.start());
     this.startButton.addEventListener('touchend', event => {
       event.preventDefault();
@@ -337,20 +348,9 @@ class Game {
   }
 
   onInputDown() {
-    if (this.state.current === this.state.states.MENU) {
-      this.start();
-      return;
-    }
-    if (this.state.current === this.state.states.GAMEOVER) {
-      this.start();
-      return;
-    }
-
+    // Only process input for player movement if the game is actively playing.
+    // Navigation between menu/shop/gameover states is handled by explicit buttons.
     if (this.state.current !== this.state.states.PLAYING) {
-      return;
-    }
-
-    if (this.inputDown) {
       return;
     }
 
@@ -391,12 +391,8 @@ class Game {
   }
 
   getShieldStatus() {
-    if (!this.shieldUnlocked) return "";
-    const now = performance.now();
-    const cdRemaining = Math.ceil((this.shieldCooldown - (now - this.lastShieldUseTime)) / 1000);
     if (this.shieldActive) return " | [SHIELD ACTIVE]";
-    if (cdRemaining <= 0) return " | [SHIELD READY (S)]";
-    return ` | [SHIELD: ${cdRemaining}s]`;
+    return "";
   }
 
   spawnProjectile(batchAngle, delay = 0) {
@@ -522,6 +518,18 @@ class Game {
         this.ui.updateText();
       }
 
+      // Update Shield UI
+      if (this.shieldButton) {
+        const isVisible = this.shieldUnlocked && this.state.current === this.state.states.PLAYING;
+        this.shieldButton.style.display = isVisible ? 'flex' : 'none';
+        if (isVisible) {
+          const cdProgress = Math.min(1, (timestamp - this.lastShieldUseTime) / this.shieldCooldown);
+          this.shieldButton.style.setProperty('--progress-val', cdProgress * 100);
+          this.shieldButton.style.opacity = this.shieldActive ? '0.5' : '1';
+          this.shieldButton.style.setProperty('--dot-display', cdProgress >= 1 ? 'none' : 'block');
+        }
+      }
+
       // Difficulty Scaling
       const targetTime = Math.max(4, 5 - elapsed * 0.02);
       this.baseSpeed = ((Math.max(this.canvas.width, this.canvas.height) * 0.8) / targetTime) * 0.5;
@@ -614,20 +622,22 @@ class Game {
   showShop() {
     this.state.set(this.state.states.SHOP);
     const shieldBtn = this.shieldUnlocked 
-      ? `<button disabled>Unlocked</button>` 
+      ? `<button disabled style="background: #444;">Unlocked</button>` 
       : `<button id="buyShield">Buy Shield (50 Gold)</button>`;
 
     this.overlay.innerHTML = `
       <h1>Upgrades</h1>
       <p>Total Gold: ${this.ui.totalGold}</p>
       <div class="shop-item">
-        <h3>Shield Ability</h3>
-        <p class="small">Full-circle shield for 3s. Blocks all asteroids. (Key: S)</p>
+        <h3>Shield</h3>
+        <p class="small">One-time purchase.</p>
         ${shieldBtn}
       </div>
-      <button id="backMenu" style="margin-top: 20px; background: #444;">Back to Menu</button>
+      <div class="menu-buttons">
+        <button id="backMenu">Back to Menu</button>
+      </div>
     `;
-    
+
     const buyBtn = document.getElementById('buyShield');
     if (buyBtn) {
       buyBtn.onclick = () => {
