@@ -120,3 +120,54 @@ button:hover {
   border: 1px solid rgba(255,255,255,0.1);
   margin-bottom: 10px;
 }
+
+#shieldButton {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  border: 3px solid rgba(71, 255, 230, 0.2);
+  display: none;
+  z-index: 100;
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(0,0,0,0.5);
+  touch-action: none;
+  justify-content: center;
+  align-items: center;
+}
+
+#shieldButton::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(#47ffe6 calc(var(--progress-val, 0) * 1%), transparent 0);
+  -webkit-mask: radial-gradient(transparent 58%, #000 60%);
+  mask: radial-gradient(transparent 58%, #000 60%);
+  pointer-events: none;
+}
+
+#shieldButton::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #47ffe6;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  margin-top: -5px;
+  margin-left: -5px;
+  transform: rotate(calc(var(--progress-val, 0) * 3.6deg - 90deg)) translate(32px);
+  display: var(--dot-display, block);
+  pointer-events: none;
+}
+
+.shield-icon {
+  font-size: 28px;
+  pointer-events: none;
+  user-select: none;
+}
