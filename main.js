@@ -176,7 +176,8 @@ class UIController {
 
   updateText() {
     const shieldStatus = window.gameInstance?.getShieldStatus?.() || "";
-    this.statusElement.textContent = `Gold: ${this.gold} (Total: ${this.totalGold}) | Health: ${this.health} ${shieldStatus}`;
+    const levelInfo = window.gameInstance ? ` | LVL: ${window.gameInstance.playerLevel} XP: ${window.gameInstance.playerXP}/${window.gameInstance.getXPRequired()}` : "";
+    this.statusElement.textContent = `Gold: ${this.gold} (Total: ${this.totalGold}) | Health: ${this.health} ${shieldStatus}${levelInfo}`;
   }
 
   addGold(amount = 1) {
@@ -236,6 +237,8 @@ class Game {
     this.activeSectors = new Array(this.numSectors).fill(0);
     this.baseSpeed = 30;
     this.speedVariation = 0;
+    this.playerLevel = 1;
+    this.playerXP = 0;
 
     this.getSector = (angle) => {
       const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -280,6 +283,8 @@ class Game {
     this.coreLastHitTime = -1000;
     this.shieldActive = false;
     this.spawnTimer = 0;
+    this.playerLevel = 1;
+    this.playerXP = 0;
 
     const player = new Player(center, orbitalRadius, { size: playerSize });
     this.entityManager.addPlayer(player);
@@ -395,6 +400,10 @@ class Game {
     return "";
   }
 
+  getXPRequired() {
+    return this.playerLevel * 5;
+  }
+
   spawnProjectile(batchAngle, delay = 0) {
     const angle = batchAngle + (Math.random() - 0.5) * this.maxSpawnArc;
     const sector = this.getSector(angle);
@@ -487,6 +496,11 @@ class Game {
           if (projectile.sector !== undefined) this.activeSectors[projectile.sector]--;
           projectile.destroy();
           this.ui.addGold(1);
+          this.playerXP += 1;
+          while (this.playerXP >= this.getXPRequired()) {
+            this.playerXP -= this.getXPRequired();
+            this.playerLevel += 1;
+          }
           continue;
         }
 
@@ -497,6 +511,11 @@ class Game {
             if (projectile.sector !== undefined) this.activeSectors[projectile.sector]--;
             projectile.destroy();
             this.ui.addGold(1);
+            this.playerXP += 1;
+            while (this.playerXP >= this.getXPRequired()) {
+              this.playerXP -= this.getXPRequired();
+              this.playerLevel += 1;
+            }
             break;
           }
         }
