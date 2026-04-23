@@ -121,6 +121,19 @@ button:hover {
   margin-bottom: 10px;
 }
 
+#quitButton {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 100;
+  padding: 10px 18px;
+  font-size: 0.9rem;
+  background: rgba(255, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  display: none; /* Hidden by default */
+}
+
 #shieldButton {
   position: fixed;
   bottom: 24px;
