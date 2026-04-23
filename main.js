@@ -6,7 +6,8 @@ class GameStateManager {
       SHOP: 'SHOP',
       PLAYING: 'PLAYING',
       GAMEOVER: 'GAMEOVER',
-      LEVEL_UP: 'LEVEL_UP'
+      LEVEL_UP: 'LEVEL_UP',
+      PAUSED: 'PAUSED'
     };
     this.current = this.states.MENU;
   }
@@ -210,6 +211,7 @@ class Game {
     this.state = new GameStateManager();
     this.entityManager = new EntityManager();
     this.lastTimestamp = 0;
+    this.isPaused = false;
     this.lastPulseTime = 0;
     this.spawnTimer = 0;
     this.spawnInterval = 2.1;
@@ -262,6 +264,12 @@ class Game {
     this.shieldButton.id = 'shieldButton';
     this.shieldButton.innerHTML = '<div class="shield-icon">🛡️</div>';
     document.body.appendChild(this.shieldButton);
+
+    // Create Quit Button UI
+    this.quitButton = document.createElement('button');
+    this.quitButton.id = 'quitButton';
+    this.quitButton.textContent = 'Quit';
+    document.body.appendChild(this.quitButton);
 
     this.registerEvents();
     this.resizeCanvas();
@@ -367,6 +375,12 @@ class Game {
       event.preventDefault();
       this.start();
     }, { passive: false });
+
+    this.quitButton.addEventListener('click', () => this.showQuitConfirmation());
+    this.quitButton.addEventListener('touchend', event => {
+      event.preventDefault();
+      this.showQuitConfirmation();
+    }, { passive: false });
   }
 
   onInputDown() {
@@ -422,6 +436,28 @@ class Game {
     return "";
   }
 
+  showQuitConfirmation() {
+    this.isPaused = true;
+    this.state.set(this.state.states.PAUSED);
+    this.overlay.classList.remove('hide');
+    this.overlay.innerHTML = `
+      <h1>Quit Game?</h1>
+      <p>Are you sure to leave the game? Unsaved progress will be lost.</p>
+      <div class="menu-buttons">
+        <button id="yesQuitBtn">Yes</button>
+        <button id="noQuitBtn">No</button>
+      </div>
+    `;
+    document.getElementById('yesQuitBtn').onclick = () => {
+      this.ui.finalizeGold(); // Save gold before going to menu
+      this.showMenu();
+    };
+    document.getElementById('noQuitBtn').onclick = () => {
+      this.isPaused = false;
+      this.resumeGame();
+    };
+  }
+
   triggerPulse() {
     const player = this.entityManager.players[0];
     if (!player) return;
@@ -453,6 +489,7 @@ class Game {
       this.playerXP -= this.getXPRequired();
       this.playerLevel += 1;
       this.ui.updateText();
+      this.isPaused = true;
       this.state.set(this.state.states.LEVEL_UP);
       this.showLevelUpMenu();
     }
@@ -504,6 +541,7 @@ class Game {
   }
 
   resumeGame() {
+    this.isPaused = false;
     this.state.set(this.state.states.PLAYING);
     this.overlay.classList.add('hide');
     // Check if another level was banked during the pause
@@ -627,7 +665,13 @@ class Game {
     const deltaTime = Math.min((timestamp - this.lastTimestamp) / 1000, 0.033);
     this.lastTimestamp = timestamp;
 
-    if (this.state.current === this.state.states.PLAYING) {
+    if (this.isPaused) {
+      this.render();
+      window.requestAnimationFrame(timestamp => this.gameLoop(timestamp));
+      return;
+    }
+
+    if (this.state.current === this.state.states.PLAYING || this.state.current === this.state.states.PAUSED || this.state.current === this.state.states.LEVEL_UP) { // Render even when paused or level up
       const currentTime = timestamp / 1000;
       const elapsed = (timestamp - this.gameStartTime) / 1000;
 
@@ -648,7 +692,7 @@ class Game {
 
       // Update Shield UI
       if (this.shieldButton) {
-        const isVisible = this.abilitiesUnlocked.shield && this.state.current === this.state.states.PLAYING;
+        const isVisible = this.abilitiesUnlocked.shield && (this.state.current === this.state.states.PLAYING || this.state.current === this.state.states.PAUSED || this.state.current === this.state.states.LEVEL_UP);
         this.shieldButton.style.display = isVisible ? 'flex' : 'none';
         if (isVisible) {
           const cdProgress = Math.min(1, (timestamp - this.lastShieldUseTime) / this.shieldCooldown);
@@ -656,6 +700,11 @@ class Game {
           this.shieldButton.style.opacity = this.shieldActive ? '0.5' : '1';
           this.shieldButton.style.setProperty('--dot-display', cdProgress >= 1 ? 'none' : 'block');
         }
+      }
+
+      // Update Quit Button visibility
+      if (this.quitButton) {
+        this.quitButton.style.display = (this.state.current === this.state.states.PLAYING || this.state.current === this.state.states.PAUSED || this.state.current === this.state.states.LEVEL_UP) ? 'block' : 'none';
       }
 
       // Difficulty Scaling
@@ -686,6 +735,9 @@ class Game {
         this.ui.finalizeGold();
         this.state.set(this.state.states.GAMEOVER);
       }
+    }
+    if (this.state.current === this.state.states.PLAYING) { // Only update game logic if playing
+      // All game logic that updates state should be here
     }
 
     this.render();
