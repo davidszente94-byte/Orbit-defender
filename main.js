@@ -345,10 +345,9 @@ class Game {
     });
 
     document.addEventListener('touchstart', event => {
-      if (event.touches.length > 0) {
-        event.preventDefault();
-        this.onInputDown();
-      }
+      if (this.inputDown) return;
+      event.preventDefault();
+      this.onInputDown();
     }, { passive: false });
 
     document.addEventListener('touchend', event => {
@@ -370,11 +369,11 @@ class Game {
       this.activateShield();
     }, { passive: false });
 
-    this.startButton.addEventListener('click', () => this.start());
-    this.startButton.addEventListener('touchend', event => {
+    this.startButton.onclick = () => this.start();
+    this.startButton.ontouchend = event => {
       event.preventDefault();
       this.start();
-    }, { passive: false });
+    };
 
     this.quitButton.addEventListener('click', () => this.showQuitConfirmation());
     this.quitButton.addEventListener('touchend', event => {
@@ -448,14 +447,22 @@ class Game {
         <button id="noQuitBtn">No</button>
       </div>
     `;
-    document.getElementById('yesQuitBtn').onclick = () => {
+    const yesQuit = () => {
       this.ui.finalizeGold(); // Save gold before going to menu
       this.showMenu();
     };
-    document.getElementById('noQuitBtn').onclick = () => {
+    const noQuit = () => {
       this.isPaused = false;
       this.resumeGame();
     };
+
+    const yesBtn = document.getElementById('yesQuitBtn');
+    const noBtn = document.getElementById('noQuitBtn');
+
+    yesBtn.onclick = yesQuit;
+    yesBtn.ontouchend = (e) => { e.preventDefault(); yesQuit(); };
+    noBtn.onclick = noQuit;
+    noBtn.ontouchend = (e) => { e.preventDefault(); noQuit(); };
   }
 
   triggerPulse() {
@@ -509,7 +516,7 @@ class Game {
         const btn = document.createElement('button');
         const name = key === 'trail' ? 'Destroying Trail' : key === 'pulse' ? 'Pulsefire' : 'Shield';
         btn.textContent = `${name} (Lv.${this.abilityLevels[key] + 1})`;
-        btn.onclick = () => {
+        const selectUpgrade = () => {
           this.abilityLevels[key]++;
           if (key === 'trail') {
             const duration = 0.3 + this.abilityLevels.trail * 0.3;
@@ -521,13 +528,15 @@ class Game {
           }
           this.resumeGame();
         };
+        btn.onclick = selectUpgrade;
+        btn.ontouchend = (e) => { e.preventDefault(); selectUpgrade(); };
         container.appendChild(btn);
       });
     } else {
       const isGold = Math.random() < 0.9;
       const btn = document.createElement('button');
       btn.textContent = isGold ? "+10 Gold" : "+1 Health";
-      btn.onclick = () => {
+      const takeBonus = () => {
         if (isGold) {
           this.ui.addGold(10);
         } else {
@@ -536,6 +545,8 @@ class Game {
         }
         this.resumeGame();
       };
+      btn.onclick = takeBonus;
+      btn.ontouchend = (e) => { e.preventDefault(); takeBonus(); };
       container.appendChild(btn);
     }
   }
@@ -795,8 +806,12 @@ class Game {
       </div>
     `;
     this.overlay.classList.remove('hide');
-    document.getElementById('playBtn').onclick = () => this.start();
-    document.getElementById('shopBtn').onclick = () => this.showShop();
+    const playBtn = document.getElementById('playBtn');
+    playBtn.onclick = () => this.start();
+    playBtn.ontouchend = (e) => { e.preventDefault(); this.start(); };
+    const shopBtn = document.getElementById('shopBtn');
+    shopBtn.onclick = () => this.showShop();
+    shopBtn.ontouchend = (e) => { e.preventDefault(); this.showShop(); };
   }
 
   showShop() {
@@ -848,16 +863,18 @@ class Game {
     const buyTrailBtn = document.getElementById('buyTrail');
     if (buyTrailBtn) {
       buyTrailBtn.onclick = () => buyAbility('trail', 50);
+      buyTrailBtn.ontouchend = (e) => { e.preventDefault(); buyAbility('trail', 50); };
     }
 
     const buyPulseBtn = document.getElementById('buyPulse');
     if (buyPulseBtn) {
       buyPulseBtn.onclick = () => buyAbility('pulse', 50);
+      buyPulseBtn.ontouchend = (e) => { e.preventDefault(); buyAbility('pulse', 50); };
     }
 
     const buyShieldBtn = document.getElementById('buyShield');
     if (buyShieldBtn) {
-      buyShieldBtn.onclick = () => {
+      const purchaseShield = () => {
         if (this.ui.totalGold >= 50) {
           this.ui.totalGold -= 50;
           this.abilitiesUnlocked.shield = true;
@@ -867,8 +884,12 @@ class Game {
           this.showShop();
         }
       };
+      buyShieldBtn.onclick = purchaseShield;
+      buyShieldBtn.ontouchend = (e) => { e.preventDefault(); purchaseShield(); };
     }
-    document.getElementById('backMenu').onclick = () => this.showMenu();
+    const backBtn = document.getElementById('backMenu');
+    backBtn.onclick = () => this.showMenu();
+    backBtn.ontouchend = (e) => { e.preventDefault(); this.showMenu(); };
   }
 
   showGameOver() {
@@ -881,8 +902,12 @@ class Game {
       </div>
     `;
     this.overlay.classList.remove('hide');
-    document.getElementById('retryBtn').onclick = () => this.start();
-    document.getElementById('menuBtn').onclick = () => this.showMenu();
+    const retryBtn = document.getElementById('retryBtn');
+    retryBtn.onclick = () => this.start();
+    retryBtn.ontouchend = (e) => { e.preventDefault(); this.start(); };
+    const menuBtn = document.getElementById('menuBtn');
+    menuBtn.onclick = () => this.showMenu();
+    menuBtn.ontouchend = (e) => { e.preventDefault(); this.showMenu(); };
   }
 
   resizeCanvas() {
