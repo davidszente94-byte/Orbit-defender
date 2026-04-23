@@ -210,6 +210,7 @@ class Game {
     this.state = new GameStateManager();
     this.entityManager = new EntityManager();
     this.lastTimestamp = 0;
+    this.lastPulseTime = 0;
     this.spawnTimer = 0;
     this.spawnInterval = 2.1;
     this.core = { x: 0, y: 0, radius: 0 };
@@ -222,7 +223,6 @@ class Game {
     this.CORE_DAMAGE_COOLDOWN = 1000;
 
     // Shield System
-    this.shieldUnlocked = localStorage.getItem('orbit_defender_shieldUnlocked') === 'true';
     this.shieldActive = false;
     this.lastShieldUseTime = -20000;
     this.shieldDuration = 3000;
@@ -294,6 +294,7 @@ class Game {
     this.activeSectors.fill(0);
     this.coreLastHitTime = -1000;
     this.shieldActive = false;
+    this.lastPulseTime = performance.now();
     this.spawnTimer = 0;
     this.playerLevel = 1;
     this.playerXP = 0;
@@ -401,8 +402,13 @@ class Game {
   }
 
   activateShield() {
-    if (!this.shieldUnlocked || this.shieldActive || this.state.current !== this.state.states.PLAYING) return;
+    if (!this.abilitiesUnlocked.shield || this.shieldActive || this.state.current !== this.state.states.PLAYING) return;
     
+    const level = this.abilityLevels.shield;
+    // Scaling: Lv2:+1s Dur, Lv3:+1s Dur, Lv4:15s CD, Lv5:12s CD
+    this.shieldDuration = 3000 + (level >= 2 ? 1000 : 0) + (level >= 3 ? 1000 : 0);
+    this.shieldCooldown = level >= 5 ? 12000 : (level >= 4 ? 15000 : 20000);
+
     const now = performance.now();
     if (now - this.lastShieldUseTime >= this.shieldCooldown) {
       this.shieldActive = true;
@@ -414,6 +420,27 @@ class Game {
   getShieldStatus() {
     if (this.shieldActive) return " | [SHIELD ACTIVE]";
     return "";
+  }
+
+  triggerPulse() {
+    const player = this.entityManager.players[0];
+    if (!player) return;
+
+    // Centered on player's current orbital position
+    const playerAngle = Math.atan2(Math.sin(player.angle), Math.cos(player.angle));
+    const arcWidth = 0.5; // Roughly 30 degrees
+
+    this.entityManager.projectiles.forEach(p => {
+      const pAngle = Math.atan2(p.y - this.core.y, p.x - this.core.x);
+      let diff = Math.abs(pAngle - playerAngle);
+      if (diff > Math.PI) diff = 2 * Math.PI - diff;
+
+      if (diff < arcWidth) {
+        if (p.sector !== undefined) this.activeSectors[p.sector]--;
+        p.destroy();
+        this.ui.addGold(1); // Small reward for pulse kills
+      }
+    });
   }
 
   getXPRequired() {
@@ -450,6 +477,10 @@ class Game {
           if (key === 'trail') {
             const duration = 0.3 + this.abilityLevels.trail * 0.3;
             this.entityManager.players.forEach(p => p.trailDuration = duration);
+          } else if (key === 'shield') {
+            const lvl = this.abilityLevels.shield;
+            this.shieldDuration = 3000 + (lvl >= 2 ? 1000 : 0) + (lvl >= 3 ? 1000 : 0);
+            this.shieldCooldown = lvl >= 5 ? 12000 : (lvl >= 4 ? 15000 : 20000);
           }
           this.resumeGame();
         };
@@ -606,9 +637,18 @@ class Game {
         this.ui.updateText();
       }
 
+      // Pulsefire Timer
+      if (this.abilitiesUnlocked.pulse && this.abilityLevels.pulse > 0) {
+        const pulseInterval = (6 - this.abilityLevels.pulse) * 1000;
+        if (timestamp - this.lastPulseTime >= pulseInterval) {
+          this.triggerPulse();
+          this.lastPulseTime = timestamp;
+        }
+      }
+
       // Update Shield UI
       if (this.shieldButton) {
-        const isVisible = this.shieldUnlocked && this.state.current === this.state.states.PLAYING;
+        const isVisible = this.abilitiesUnlocked.shield && this.state.current === this.state.states.PLAYING;
         this.shieldButton.style.display = isVisible ? 'flex' : 'none';
         if (isVisible) {
           const cdProgress = Math.min(1, (timestamp - this.lastShieldUseTime) / this.shieldCooldown);
@@ -768,10 +808,9 @@ class Game {
       buyShieldBtn.onclick = () => {
         if (this.ui.totalGold >= 50) {
           this.ui.totalGold -= 50;
-          this.abilitiesUnlocked.shield = true; // Update the new structure
-          this.shieldUnlocked = true; // Keep old flag for now as it's used in gameplay
+          this.abilitiesUnlocked.shield = true;
           localStorage.setItem('orbit_defender_totalGold', this.ui.totalGold);
-          localStorage.setItem('ability_shield', 'true'); // Use new key
+          localStorage.setItem('ability_shield', 'true');
           this.ui.updateText();
           this.showShop();
         }
