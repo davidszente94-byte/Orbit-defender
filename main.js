@@ -561,6 +561,11 @@ class Game {
   resumeGame() {
     this.isPaused = false;
     this.state.set(this.state.states.PLAYING);
+    // Clear all projectiles on screen without granting rewards
+    this.entityManager.projectiles.forEach(p => {
+      if (p.sector !== undefined) this.activeSectors[p.sector]--;
+      p.destroy();
+    });
     this.overlay.classList.add('hide');
     // Check if another level was banked during the pause
     this.checkLevelUp();
@@ -645,6 +650,9 @@ class Game {
         if (projectile.distanceTo(coreCenter) <= shieldRadius) {
           if (projectile.sector !== undefined) this.activeSectors[projectile.sector]--;
           projectile.destroy();
+          this.ui.addGold(1);
+          this.playerXP += 1;
+          this.checkLevelUp();
           return;
         }
       }
@@ -804,6 +812,10 @@ class Game {
 
   showMenu() {
     this.state.set(this.state.states.MENU);
+    this.entityManager.projectiles = [];
+    this.entityManager.players = [];
+    this.activeSectors.fill(0);
+    this.render();
     this.overlay.innerHTML = `
       <h1>Orbit Defender</h1>
       <p>Protect the core at all costs.</p>
@@ -900,6 +912,11 @@ class Game {
   }
 
   showGameOver() {
+    this.playerLevel = 1;
+    this.playerXP = 0;
+    this.abilityLevels = { trail: 0, pulse: 0, shield: 0 };
+    this.lastShieldUseTime = -20000;
+    this.ui.updateText();
     this.overlay.innerHTML = `
       <h1>Game Over</h1>
       <p>Your core was breached.</p>
