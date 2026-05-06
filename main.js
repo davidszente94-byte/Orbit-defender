@@ -296,6 +296,7 @@ class Game {
     this.core = { ...center, radius: coreRadius };
     this.entityManager.players = [];
     this.entityManager.projectiles = [];
+    this.isPaused = false;
     this.ui.gold = 0;
     this.ui.health = 5;
     this.ui.updateText();
