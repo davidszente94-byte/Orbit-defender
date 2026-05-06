@@ -360,11 +360,15 @@ class Game {
     this.activeSectors.fill(0);
     this.coreLastHitTime = -1000;
     this.shieldActive = false;
-    this.lastPulseTime = performance.now();
+    this.lastPulseTime = 0; // Ensures immediate first shot on start
     this.spawnTimer = 0;
     this.playerLevel = 1;
     this.playerXP = 0;
-    this.abilityLevels = { trail: 0, pulse: 0, shield: 0 };
+    this.abilityLevels = {
+      trail: this.abilitiesUnlocked.trail ? 1 : 0,
+      pulse: this.abilitiesUnlocked.pulse ? 1 : 0,
+      shield: this.abilitiesUnlocked.shield ? 1 : 0
+    };
 
     const player = new Player(center, orbitalRadius, { 
       size: playerSize,
@@ -572,7 +576,7 @@ class Game {
         const selectUpgrade = () => {
           this.abilityLevels[key]++;
           if (key === 'trail') {
-            const duration = 0.3 + this.abilityLevels.trail * 0.3;
+            const duration = this.abilityLevels.trail * 0.3;
             this.entityManager.players.forEach(p => p.trailDuration = duration);
           } else if (key === 'shield') {
             const lvl = this.abilityLevels.shield;
@@ -775,7 +779,8 @@ class Game {
 
       // Pulsefire Timer
       if (this.abilitiesUnlocked.pulse && this.abilityLevels.pulse > 0) {
-        const pulseInterval = (6 - this.abilityLevels.pulse) * 1000;
+        const intervals = [2000, 1000, 700, 500, 300];
+        const pulseInterval = intervals[Math.min(this.abilityLevels.pulse, 5) - 1];
         if (timestamp - this.lastPulseTime >= pulseInterval) {
           this.triggerPulse();
           this.lastPulseTime = timestamp;
@@ -882,6 +887,7 @@ class Game {
     this.entityManager.playerProjectiles = [];
     this.entityManager.players = [];
     this.activeSectors.fill(0);
+    this.quitButton.style.display = 'none'; // Ensure quit button is hidden in menu
     this.render();
     this.overlay.innerHTML = `
       <h1>Orbit Defender</h1>
@@ -902,6 +908,7 @@ class Game {
 
   showShop() {
     this.state.set(this.state.states.SHOP);
+    this.quitButton.style.display = 'none'; // Ensure quit button is hidden in shop
 
     const getAbilityButton = (abilityName, cost, key) => {
       const isUnlocked = this.abilitiesUnlocked[key];
@@ -981,7 +988,11 @@ class Game {
   showGameOver() {
     this.playerLevel = 1;
     this.playerXP = 0;
-    this.abilityLevels = { trail: 0, pulse: 0, shield: 0 };
+    this.abilityLevels = {
+      trail: this.abilitiesUnlocked.trail ? 1 : 0,
+      pulse: this.abilitiesUnlocked.pulse ? 1 : 0,
+      shield: this.abilitiesUnlocked.shield ? 1 : 0
+    };
     this.lastShieldUseTime = -20000;
     this.ui.updateText();
     this.overlay.innerHTML = `
