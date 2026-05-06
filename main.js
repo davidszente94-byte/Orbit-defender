@@ -61,6 +61,36 @@ class Projectile {
   }
 }
 
+class PlayerProjectile {
+  constructor(x, y, angle, speed) {
+    this.x = x;
+    this.y = y;
+    this.angle = angle;
+    this.velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+    this.radius = 8;
+    this.isDestroyed = false;
+  }
+
+  update(deltaTime) {
+    this.x += this.velocity.x * deltaTime;
+    this.y += this.velocity.y * deltaTime;
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    ctx.fillStyle = '#47ff6d';
+    ctx.beginPath();
+    ctx.moveTo(20, 0); // Tip of spike
+    ctx.lineTo(-10, 5);
+    ctx.lineTo(-10, -5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 class Player {
   constructor(center, orbitalRadius, options = {}) {
     this.center = center;
@@ -145,6 +175,7 @@ class EntityManager {
   constructor() {
     this.players = [];
     this.projectiles = [];
+    this.playerProjectiles = [];
   }
 
   addPlayer(player) {
@@ -155,21 +186,38 @@ class EntityManager {
     this.projectiles.push(projectile);
   }
 
+  addPlayerProjectile(projectile) {
+    this.playerProjectiles.push(projectile);
+  }
+
   update(deltaTime, currentTime) {
     this.players.forEach(player => player.update(deltaTime, currentTime));
     this.projectiles.forEach(projectile => projectile.update(deltaTime));
+    this.playerProjectiles.forEach(p => p.update(deltaTime));
     this.projectiles = this.projectiles.filter(projectile => !projectile.isDestroyed);
+    this.playerProjectiles = this.playerProjectiles.filter(p => !p.isDestroyed);
   }
 
   draw(ctx) {
     this.players.forEach(player => player.draw(ctx));
     this.projectiles.forEach(projectile => projectile.draw(ctx));
+    this.playerProjectiles.forEach(p => p.draw(ctx));
   }
 }
 
 class UIController {
   constructor(statusElement) {
     this.statusElement = statusElement;
+    this.uiContainer = document.getElementById('ui');
+    
+    // Create XP Bar
+    this.xpContainer = document.createElement('div');
+    this.xpContainer.id = 'xp-container';
+    this.xpBar = document.createElement('div');
+    this.xpBar.id = 'xp-bar';
+    this.xpContainer.appendChild(this.xpBar);
+    this.uiContainer.appendChild(this.xpContainer);
+
     this.gold = 0;
     this.totalGold = parseInt(localStorage.getItem('orbit_defender_totalGold')) || 0;
     this.health = 5;
@@ -177,9 +225,10 @@ class UIController {
   }
 
   updateText() {
-    const shieldStatus = window.gameInstance?.getShieldStatus?.() || "";
-    const levelInfo = window.gameInstance ? ` | LVL: ${window.gameInstance.playerLevel} XP: ${window.gameInstance.playerXP}/${window.gameInstance.getXPRequired()}` : "";
-    this.statusElement.textContent = `Gold: ${this.gold} (Total: ${this.totalGold}) | Health: ${this.health} ${shieldStatus}${levelInfo}`;
+    const levelInfo = window.gameInstance ? ` | LVL: ${window.gameInstance.playerLevel}` : "";
+    this.statusElement.textContent = `Gold: ${this.gold} (${this.totalGold}) | HP: ${this.health}${levelInfo}`;
+    
+    this.updateXPBar();
   }
 
   addGold(amount = 1) {
@@ -196,6 +245,13 @@ class UIController {
   takeDamage(amount = 1) {
     this.health = Math.max(0, this.health - amount);
     this.updateText();
+  }
+
+  updateXPBar() {
+    if (!window.gameInstance || !this.xpBar) return;
+    const xpNeeded = window.gameInstance.getXPRequired();
+    const progress = (window.gameInstance.playerXP / xpNeeded) * 100;
+    this.xpBar.style.width = `${Math.min(100, progress)}%`;
   }
 }
 
@@ -296,6 +352,7 @@ class Game {
     this.core = { ...center, radius: coreRadius };
     this.entityManager.players = [];
     this.entityManager.projectiles = [];
+    this.entityManager.playerProjectiles = [];
     this.isPaused = false;
     this.ui.gold = 0;
     this.ui.health = 5;
@@ -438,8 +495,7 @@ class Game {
   }
 
   getShieldStatus() {
-    if (this.shieldActive) return " | [SHIELD ACTIVE]";
-    return "";
+    return ""; // Shield text removed per request
   }
 
   showQuitConfirmation() {
@@ -476,21 +532,11 @@ class Game {
     const player = this.entityManager.players[0];
     if (!player) return;
 
-    // Centered on player's current orbital position
-    const playerAngle = Math.atan2(Math.sin(player.angle), Math.cos(player.angle));
-    const arcWidth = 0.5; // Roughly 30 degrees
-
-    this.entityManager.projectiles.forEach(p => {
-      const pAngle = Math.atan2(p.y - this.core.y, p.x - this.core.x);
-      let diff = Math.abs(pAngle - playerAngle);
-      if (diff > Math.PI) diff = 2 * Math.PI - diff;
-
-      if (diff < arcWidth) {
-        if (p.sector !== undefined) this.activeSectors[p.sector]--;
-        p.destroy();
-        this.ui.addGold(1); // Small reward for pulse kills
-      }
-    });
+    const pos = player.position;
+    // Shot speed is roughly 2.5x base asteroid speed for responsiveness
+    const speed = this.baseSpeed * 2.5;
+    const shot = new PlayerProjectile(pos.x, pos.y, player.angle, speed);
+    this.entityManager.addPlayerProjectile(shot);
   }
 
   getXPRequired() {
@@ -685,6 +731,26 @@ class Game {
         }
       }
     });
+
+    // Player Projectile (Pulsefire) Collisions
+    this.entityManager.playerProjectiles.forEach(shot => {
+      if (shot.isDestroyed) return;
+      for (const asteroid of this.entityManager.projectiles) {
+        if (asteroid.isDestroyed) continue;
+        const dist = Math.hypot(shot.x - asteroid.x, shot.y - asteroid.y);
+        if (dist <= shot.radius + asteroid.radius) {
+          if (asteroid.sector !== undefined) this.activeSectors[asteroid.sector]--;
+          asteroid.destroy();
+          shot.isDestroyed = true; // One hit per shot
+          this.ui.addGold(1);
+          this.playerXP += 1;
+          this.checkLevelUp();
+          break;
+        }
+      }
+      // Cleanup if far out of bounds
+      if (Math.hypot(shot.x - this.core.x, shot.y - this.core.y) > 2000) shot.isDestroyed = true;
+    });
   }
 
   gameLoop(timestamp) {
@@ -813,6 +879,7 @@ class Game {
   showMenu() {
     this.state.set(this.state.states.MENU);
     this.entityManager.projectiles = [];
+    this.entityManager.playerProjectiles = [];
     this.entityManager.players = [];
     this.activeSectors.fill(0);
     this.render();
