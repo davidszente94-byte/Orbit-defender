@@ -345,18 +345,24 @@ class Game {
     });
 
     document.addEventListener('touchstart', event => {
+      if (this.state.current === this.state.states.PLAYING) {
+        event.preventDefault();
+      }
       if (this.inputDown) return;
-      event.preventDefault();
       this.onInputDown();
     }, { passive: false });
 
     document.addEventListener('touchend', event => {
-      event.preventDefault();
+      if (this.state.current === this.state.states.PLAYING) {
+        event.preventDefault();
+      }
       this.onInputUp(performance.now() / 1000);
     }, { passive: false });
 
     document.addEventListener('touchcancel', event => {
-      event.preventDefault();
+      if (this.state.current === this.state.states.PLAYING) {
+        event.preventDefault();
+      }
       this.onInputUp(performance.now() / 1000);
     }, { passive: false });
 
