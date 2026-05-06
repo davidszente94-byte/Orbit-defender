@@ -28,8 +28,8 @@ body {
 
 #ui {
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: max(16px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -54,28 +54,18 @@ body {
 #overlay {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(0, 0, 0, 0.85);
   color: #ffffff;
-  padding: 24px;
-  z-index: 20;
+  padding: 48px 24px;
+  z-index: 1000;
   transition: opacity 180ms ease;
-}
-
-#overlay.hide {
-  opacity: 0;
-  pointer-events: none;
-}
-
-#overlay {
   text-align: center;
-  padding: 32px;
-}
-
-#overlay h1 {
-  margin: 0 0 12px;
-  font-size: clamp(2rem, 5vw, 3rem);
 }
 
 #overlay p {
@@ -121,30 +111,40 @@ button:hover {
   margin-bottom: 10px;
 }
 
+#overlay.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#overlay h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
 #quitButton {
   position: fixed;
-  top: 24px;
-  right: 24px;
-  z-index: 100;
+  top: max(20px, env(safe-area-inset-top));
+  right: max(20px, env(safe-area-inset-right));
+  z-index: 1100;
   padding: 10px 18px;
   font-size: 0.9rem;
   background: rgba(255, 0, 0, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
-  display: none; /* Hidden by default */
+  display: none;
 }
 
 #shieldButton {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  right: max(20px, env(safe-area-inset-right));
   width: 64px;
   height: 64px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.7);
   border: 3px solid rgba(71, 255, 230, 0.2);
   display: none;
-  z-index: 100;
+  z-index: 1100;
   cursor: pointer;
   box-shadow: 0 0 15px rgba(0,0,0,0.5);
   touch-action: none;
